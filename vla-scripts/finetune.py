@@ -61,6 +61,16 @@ from prismatic.vla.constants import (
 from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
+# Monitoring components (optional, imported only when enabled)
+try:
+    from utils.monitoring import PruningObserver
+    from utils.monitoring.pruning.adapters.lightvla import LightVLATokenPrunerAdapter
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+    PruningObserver = None
+    LightVLATokenPrunerAdapter = None
+
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -116,6 +126,10 @@ class FinetuneConfig:
     log_freq: int = 100
     run_id_note: Optional[str] = None                # Extra note to add to end of run ID for logging
     run_id_override: Optional[str] = None            # Optional string to override the run ID with
+
+    # Pruning Monitoring
+    enable_pruning_monitor: bool = False             # If True, enables detailed pruning statistics monitoring
+    pruning_monitor_interval: int = 500              # Record detailed pruning stats every N steps
 
     # fmt: on
 
@@ -788,6 +802,23 @@ def finetune(cfg: FinetuneConfig) -> None:
             f"\tACTION_PROPRIO_NORMALIZATION_TYPE: {ACTION_PROPRIO_NORMALIZATION_TYPE}"
         )
 
+        # Initialize pruning monitoring (if enabled)
+        pruning_observer = None
+        pruning_adapter = None
+        if cfg.enable_pruning_monitor and distributed_state.is_main_process:
+            if not MONITORING_AVAILABLE:
+                print("[Warning] Pruning monitoring requested but utils.monitoring not available. Skipping.")
+            else:
+                pruning_observer = PruningObserver(
+                    log_dir=run_dir / "pruning_logs",
+                    run_id=run_id,
+                    log_interval=cfg.log_freq,
+                    event_log_interval=cfg.log_freq,  # Write JSONL every N steps instead of every step
+                    enable_tensorboard=True,
+                    tensorboard_dirname="tb",
+                )
+                print(f"[Monitor] Pruning observer initialized: {run_dir / 'pruning_logs'}")
+
     # Two options:
     # (1) Base model is on Hugging Face Hub
     #   - Then download it and record the path to the download directory
@@ -865,6 +896,16 @@ def finetune(cfg: FinetuneConfig) -> None:
 
     # Wrap VLA with DDP
     vla = wrap_ddp(vla, device_id, find_unused=True)
+
+    # Attach pruning adapter (after DDP wrapping)
+    if cfg.enable_pruning_monitor and distributed_state.is_main_process and pruning_observer is not None:
+        pruning_adapter = LightVLATokenPrunerAdapter(
+            pruner=vla.module.language_model.model.pruner,  # Note: .module for DDP
+            observer=pruning_observer,
+            component="vision_tokens",
+            detailed_log_interval=cfg.pruning_monitor_interval,
+        ).attach()
+        print(f"[Monitor] Pruning adapter attached to TokenPruner (detailed interval: {cfg.pruning_monitor_interval})")
 
     # If applicable, instantiate proprio projector
     if cfg.use_proprio:
@@ -1029,6 +1070,10 @@ def finetune(cfg: FinetuneConfig) -> None:
         gradient_step_idx = batch_idx // cfg.grad_accumulation_steps
         log_step = gradient_step_idx if not cfg.resume else cfg.resume_step + gradient_step_idx
 
+        # Update pruning observer step
+        if cfg.enable_pruning_monitor and pruning_observer is not None:
+            pruning_observer.log_step(log_step)
+
         vla.module.language_model.model.pruner.set_noise_scale(1 - log_step / cfg.max_steps)
 
         # Compute training metrics and loss
@@ -1132,6 +1177,15 @@ def finetune(cfg: FinetuneConfig) -> None:
         if log_step == cfg.max_steps:
             print(f"Max step {cfg.max_steps} reached! Stopping training...")
             break
+
+    # Finalize pruning monitoring
+    if cfg.enable_pruning_monitor and distributed_state.is_main_process:
+        if pruning_adapter is not None:
+            pruning_adapter.detach()
+            print("[Monitor] Pruning adapter detached")
+        if pruning_observer is not None:
+            summary_path = pruning_observer.finalize()
+            print(f"[Monitor] Pruning summary saved: {summary_path}")
 
 
 if __name__ == "__main__":
