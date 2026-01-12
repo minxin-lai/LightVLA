@@ -58,3 +58,4 @@ checkpoints/
 # datasets/
 runs/
 eval_logs/
+task/*

@@ -63,8 +63,8 @@ from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 
 # Monitoring components (optional, imported only when enabled)
 try:
-    from utils.monitoring import PruningObserver
-    from utils.monitoring.pruning.adapters.lightvla import LightVLATokenPrunerAdapter
+    from monitor import PruningObserver
+    from monitor.pruning.adapters.lightvla import LightVLATokenPrunerAdapter
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

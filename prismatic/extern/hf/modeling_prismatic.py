@@ -1130,6 +1130,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
         attention_mask,
         NUM_PROMPT_TOKENS,
         noisy_action_projector,
+        output_attentions: bool = False,
     ):
         """Run diffusion-based action prediction"""
         # Clone embedding for reuse in each timestep
@@ -1180,7 +1181,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
                 inputs_embeds=multimodal_embeddings,
                 labels=None,
                 use_cache=None,
-                output_attentions=False,
+                output_attentions=output_attentions,
                 output_hidden_states=True,
                 return_dict=True,
             )
@@ -1211,6 +1212,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
         labels,
         NUM_PROMPT_TOKENS,
         action_head=None,
+        output_attentions: bool = False,
     ):
         """Run L1 regression-based continuous action prediction or discrete action tokens prediction."""
         # Zero out action token embeddings
@@ -1231,7 +1233,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
             inputs_embeds=multimodal_embeddings,
             labels=None,
             use_cache=None,
-            output_attentions=False,
+            output_attentions=output_attentions,
             output_hidden_states=True,
             return_dict=True,
         )
@@ -1303,6 +1305,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
 
         pixel_values = kwargs["pixel_values"]
         attention_mask = kwargs["attention_mask"]
+        output_attentions = bool(kwargs.pop("output_attentions", False))
 
         # Create fake labels tensor (needed for action mask)
         labels = input_ids.clone()
@@ -1357,6 +1360,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
                 attention_mask,
                 NUM_PROMPT_TOKENS,
                 noisy_action_projector,
+                output_attentions=output_attentions,
             )
         else:
             # Run regression or discrete token-based prediction
@@ -1368,6 +1372,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
                 labels,
                 NUM_PROMPT_TOKENS,
                 action_head,
+                output_attentions=output_attentions,
             )
 
         # Unnormalize predicted actions

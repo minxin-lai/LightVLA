@@ -45,6 +45,9 @@ np.set_printoptions(formatter={"float": lambda x: "{0:0.3f}".format(x)})
 
 def model_is_on_hf_hub(model_path: str) -> bool:
     """Checks whether a model path points to a model on Hugging Face Hub."""
+    # Fast path: local directory => not on hub (also avoids network access in restricted environments).
+    if os.path.isdir(model_path):
+        return False
     # If the API call below runs without error, the model is on the hub
     try:
         HfApi().model_info(model_path)
