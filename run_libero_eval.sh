@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 设置 LIBERO 数据集路径
 export LIBERO_DATASET_PATH="/workspace/laiminxin/datasets/libero_rlds"
+# tracer 已移动到上层仓库，开启 trace/离线画图需要它在 PYTHONPATH 中
+export PYTHONPATH="/workspace/laiminxin/vla-opt/third_party/LightVLA:/workspace/laiminxin/vla-opt:${PYTHONPATH}"
 
 echo "=== LightVLA Evaluation ==="
 echo "Start time: $(date)"
@@ -35,5 +37,5 @@ echo ""
 echo "=== Evaluation Complete ==="
 echo "End time: $(date)"
 
-python scripts/trace/plot_routing_overlays.py \
+python -m tracer.plot_routing_overlays \
     --exp_dir "${TRACE_OUT_DIR}"
